@@ -25,12 +25,12 @@ impl HlcTimestamp {
     pub fn new(timestamp: i64, count: u64) -> Self {
         Self { timestamp, count }
     }
-    
+
     /// Returns the wall-clock time in nanoseconds since the Unix epoch.
     pub fn timestamp(&self) -> i64 {
         self.timestamp
     }
-    
+
     /// Returns the logical clock value.
     pub fn count(&self) -> u64 {
         self.count
@@ -62,7 +62,7 @@ impl HlcGenerator {
     ///
     /// Whenever the clock running on a single node is required, there is no
     /// need to worry about drift, as no adjustments are made to the clock,
-    /// i.e. [`update()`](HlcClock::update) is never called.
+    /// i.e. [`update()`](HlcGenerator::update) is never called.
     pub fn new() -> Self {
         Self::with_max_drift(0)
     }
