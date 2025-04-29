@@ -9,31 +9,52 @@ use {
     std::sync::Arc,
 };
 
-/// State of hybrid logical clock (HLC).
+/// Hybrid logical clock (HLC) timestamp.
 #[derive(Hash, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
 pub struct HlcTimestamp {
-    /// Wall-clock time in nanoseconds since the Unix epoch.
-    timestamp: i64,
+    /// Wall-clock time.
+    ///
+    /// Timestamp in nanoseconds since the Unix epoch.
+    pt: i64,
 
-    /// The logical clock value, captures causality for events that occur at the
-    /// same wall-clock time.
-    count: u64,
+    /// The logical clock value.
+    ///
+    /// Captures causality for events that occur at the same wall-clock time.
+    lc: u64,
 }
 
 impl HlcTimestamp {
     /// Creates a new HLC timestamp.
-    pub fn new(timestamp: i64, count: u64) -> Self {
-        Self { timestamp, count }
+    pub fn new() -> Self {
+        Self {
+            pt: current_timestamp().unwrap_or(0),
+            lc: 0,
+        }
+    }
+
+    /// Creates a new timestamp with the specified physical time and logical
+    /// clock count.
+    pub fn from_parts(timestamp: i64, count: u64) -> Self {
+        Self {
+            pt: timestamp,
+            lc: count,
+        }
     }
 
     /// Returns the wall-clock time in nanoseconds since the Unix epoch.
     pub fn timestamp(&self) -> i64 {
-        self.timestamp
+        self.pt
     }
 
     /// Returns the logical clock value.
     pub fn count(&self) -> u64 {
-        self.count
+        self.lc
+    }
+}
+
+impl Default for HlcTimestamp {
+    fn default() -> Self {
+        Self::new()
     }
 }
 
@@ -73,30 +94,33 @@ impl HlcGenerator {
             inner: Arc::new(RwLock::new(InnerHlcClock {
                 max_drift,
                 state: HlcTimestamp {
-                    timestamp: current_timestamp().unwrap_or(0),
-                    count: 0,
+                    pt: current_timestamp().unwrap_or(0),
+                    lc: 0,
                 },
             })),
         }
     }
 
-    /// Gets the current timestamp from the HLC clock.
+    /// Current timestamp.
+    ///
+    /// Use [`next_timestamp()`](HlcGenerator::next_timestamp) to get the
+    /// timestamp for local or send events.
     pub fn timestamp(&self) -> HlcTimestamp {
         let inner = self.inner.read();
         inner.state.clone()
     }
 
-    /// Get next timestamp from the HLC clock.
+    /// Timestamp for the local or send event.
     pub fn next_timestamp(&self) -> Option<HlcTimestamp> {
         let mut inner = self.inner.write();
 
         let timestamp = current_timestamp()?;
-        if inner.state.timestamp >= timestamp {
+        if inner.state.pt >= timestamp {
             // Known timestamp is not outdated, increment the logical count.
-            inner.state.count += 1;
+            inner.state.lc += 1;
         } else {
             // Known timestamp is outdated, update timestamp and reset the logical count.
-            inner.state.count = 0;
+            inner.state.lc = 0;
         }
         Some(inner.state.clone())
     }
@@ -108,41 +132,41 @@ impl HlcGenerator {
     /// then such a check is ignored).
     ///
     /// Updated timestamp is returned.
-    pub fn update(&self, incoming_state: HlcTimestamp) -> HlcResult<HlcTimestamp> {
+    pub fn update(&self, incoming_id: HlcTimestamp) -> HlcResult<HlcTimestamp> {
         let mut inner = self.inner.write();
 
         let timestamp = current_timestamp().ok_or(HlcError::OutOfRangeTimestamp)?;
 
         // Physical clock is ahead of both the incoming timestamp and the current state.
-        if timestamp > incoming_state.timestamp && timestamp > inner.state.timestamp {
+        if timestamp > incoming_id.pt && timestamp > inner.state.pt {
             // Update the clock state.
             inner.state = HlcTimestamp {
-                timestamp,
-                count: 0,
+                pt: timestamp,
+                lc: 0,
             };
             return Ok(inner.state.clone());
         }
 
-        if incoming_state.timestamp > inner.state.timestamp {
+        if incoming_id.pt > inner.state.pt {
             // Check for drift.
-            let drift = (incoming_state.timestamp - timestamp) as usize;
+            let drift = (incoming_id.pt - timestamp) as usize;
             if inner.max_drift > 0 && drift > inner.max_drift {
                 return Err(HlcError::DriftTooLarge(drift, inner.max_drift));
             } else {
                 // Remote timestamp is ahead of the current state. Update local state.
-                inner.state.timestamp = incoming_state.timestamp;
-                inner.state.count = incoming_state.count + 1;
+                inner.state.pt = incoming_id.pt;
+                inner.state.lc = incoming_id.lc + 1;
             }
-        } else if incoming_state.timestamp < inner.state.timestamp {
+        } else if incoming_id.pt < inner.state.pt {
             // Our timestamp is ahead of the incoming timestamp, so it remains unchanged.
             // We only need to update the logical count.
-            inner.state.count += 1;
+            inner.state.lc += 1;
         } else {
             // Timestamps are equal, so we need to use the maximum logical count for update.
-            if incoming_state.count > inner.state.count {
-                inner.state.count = incoming_state.count;
+            if incoming_id.lc > inner.state.lc {
+                inner.state.lc = incoming_id.lc;
             }
-            inner.state.count += 1;
+            inner.state.lc += 1;
         };
 
         Ok(inner.state.clone())
