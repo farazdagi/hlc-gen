@@ -25,6 +25,30 @@ The idea is to have a generator producing timestamp-based IDs that are:
 - operate on a sub-millisecond level (produced timestamps are in nanoseconds)
 - are generated in a lock-free manner
 
+## Usage
+
+``` rust
+use hlc_gen::{HlcGenerator, HlcTimestamp};
+
+// Create a new HLC generator.
+let g = HlcGenerator::default();
+
+// Generate a new HLC timestamp for local or send event.
+let ts: HlcTimestamp = g.next_timestamp()
+                        .expect("Failed to generate timestamp");
+
+// When message comes from another node, we can update
+// the generator to preserve the causality relationship.
+let another_ts = HlcTimestamp::from_parts(1234567890, 1234567890);
+g.update(&ts)
+ .expect("Incoming message has timestamp that is drifted too far");
+
+// Newly generated timestamp will "happen after" both
+// the previous local and incoming remote timestamps.
+let ts: Option<HlcTimestamp> = g.next_timestamp();
+
+```
+
 ## Implementation Details
 
 The generated HLC timestamp has two components (see
@@ -47,8 +71,8 @@ pub struct HlcTimestamp {
 
 Basically, you have two counters, one for the wall-clock time and another for the logical clock. The
 logical clock is used to resolve the "happened before" relationship between events that occur at the
-same, that is when granularity of the wall-clock time is not small enough to distinguish between
-events.
+same nanosecond, that is when granularity of the wall-clock time is not small enough to distinguish
+between events.
 
 ## Sample Use Case
 
@@ -56,31 +80,10 @@ Since HLC timestamps are based on the wall-clock time, they are quite useful in 
 require ordering of events, or that need to determine how far apart two events are in time.
 
 For example, HLC timestamps can be used to implement page replacement algorithms, where page
-accesses are marked with HLC timestamps. This allows the algorithm to determine which pages are good
-candidates for eviction based on their access patterns: remove the least recently accessed page, but
+accesses are stamped with them. This allows an algorithm to determine which pages are good
+candidates for eviction, based on access patterns: e.g. remove the least recently accessed page, but
 making sure that it has been added more than 5 minute ago (based on
 [Jim Gray's 5 minute rule](https://dl.acm.org/doi/10.1145/38714.38755) idea ).
 
-## Usage
-
-``` rust
-use hlc_gen::{HlcGenerator, HlcTimestamp, UtcTimestamp};
-
-// Create a new HLC generator.
-let g = HlcGenerator::default();
-
-// Generate a new HLC timestamp for local or send event.
-let ts: HlcTimestamp = g.next_timestamp()
-                        .expect("Failed to generate timestamp");
-
-// When message comes from another node, we can update
-// the generator to preserve the causality relationship.
-let another_ts = HlcTimestamp::from_parts(1234567890, 1234567890);
-g.update(&ts)
- .expect("Incoming message has timestamp that is drifted too far");
-
-// Newly generated timestamp will "happen after" both
-// the previous local and incoming remote timestamps.
-let ts: Option<HlcTimestamp> = g.next_timestamp();
-
-```
+## License
+MIT
