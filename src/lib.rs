@@ -6,7 +6,7 @@ use {
     crate::error::{HlcError, HlcResult},
     chrono::Utc,
     parking_lot::RwLock,
-    std::sync::Arc,
+    std::{cmp::Ordering, sync::Arc},
 };
 
 /// Hybrid logical clock (HLC) timestamp.
@@ -23,11 +23,17 @@ pub struct HlcTimestamp {
     lc: u64,
 }
 
+impl Default for HlcTimestamp {
+    fn default() -> Self {
+        Self::new()
+    }
+}
+
 impl HlcTimestamp {
     /// Creates a new HLC timestamp.
     pub fn new() -> Self {
         Self {
-            pt: current_timestamp().unwrap_or(0),
+            pt: UtcTimestamp::now(),
             lc: 0,
         }
     }
@@ -52,15 +58,73 @@ impl HlcTimestamp {
     }
 }
 
-impl Default for HlcTimestamp {
-    fn default() -> Self {
-        Self::new()
+/// Provides the current timestamp in nanoseconds since the Unix epoch.
+pub trait CurrentTimestamp: Default {
+    /// Returns the current timestamp in nanoseconds since the Unix epoch.
+    fn current_timestamp(&self) -> Option<i64>;
+
+    /// Sets the current timestamp in nanoseconds since the Unix epoch.
+    fn set_current_timestamp(&self, timestamp: i64);
+}
+
+/// Implementation of the `CurrentTimestamp` trait using UTC.
+#[derive(Default)]
+pub struct UtcTimestamp;
+
+impl CurrentTimestamp for UtcTimestamp {
+    fn current_timestamp(&self) -> Option<i64> {
+        Utc::now().timestamp_nanos_opt()
+    }
+
+    fn set_current_timestamp(&self, _timestamp: i64) {
+        unimplemented!("Setting current timestamp is not supported for UtcTimestamp");
+    }
+}
+
+impl UtcTimestamp {
+    /// Returns the current timestamp in nanoseconds since the Unix epoch.
+    ///
+    /// This is a convenience method for getting the current timestamp without
+    /// creating an instance of `UtcTimestamp`.
+    pub fn now() -> i64 {
+        Utc::now().timestamp_nanos_opt().unwrap_or(0)
+    }
+}
+
+/// Implementation of the `CurrentTimestamp` trait using a manual timestamp.
+///
+/// Useful for testing purposes.
+#[derive(Default)]
+pub struct ManualTimestamp {
+    /// The current timestamp in nanoseconds since the Unix epoch.
+    timestamp: RwLock<i64>,
+}
+
+impl CurrentTimestamp for ManualTimestamp {
+    fn current_timestamp(&self) -> Option<i64> {
+        let r = self.timestamp.read();
+        Some(*r)
+    }
+
+    fn set_current_timestamp(&self, timestamp: i64) {
+        let mut w = self.timestamp.write();
+        *w = timestamp;
+    }
+}
+
+impl ManualTimestamp {
+    /// Creates a new `ManualTimestamp` with the specified timestamp.
+    pub fn new(timestamp: i64) -> Self {
+        Self {
+            timestamp: RwLock::new(timestamp),
+        }
     }
 }
 
 /// Hybrid Logical Clock (HLC) generator.
-pub struct HlcGenerator {
+pub struct HlcGenerator<T: CurrentTimestamp = UtcTimestamp> {
     inner: Arc<RwLock<InnerHlcClock>>,
+    ts_provider: Arc<T>,
 }
 
 struct InnerHlcClock {
@@ -78,7 +142,7 @@ impl Default for HlcGenerator {
     }
 }
 
-impl HlcGenerator {
+impl<T: CurrentTimestamp> HlcGenerator<T> {
     /// Creates a new HLC clock without any drift.
     ///
     /// Whenever the clock running on a single node is required, there is no
@@ -90,15 +154,30 @@ impl HlcGenerator {
 
     /// Creates a new HLC clock with the specified maximum drift.
     pub fn with_max_drift(max_drift: usize) -> Self {
+        let ts_provider = Arc::new(T::default());
         Self {
             inner: Arc::new(RwLock::new(InnerHlcClock {
                 max_drift,
                 state: HlcTimestamp {
-                    pt: current_timestamp().unwrap_or(0),
+                    pt: ts_provider.current_timestamp().unwrap_or(0),
                     lc: 0,
                 },
             })),
+            ts_provider,
         }
+    }
+
+    /// Update the maximum drift.
+    pub fn set_max_drift(&self, max_drift: usize) {
+        let mut inner = self.inner.write();
+        inner.max_drift = max_drift;
+    }
+
+    /// Get timestamp provider.
+    ///
+    /// Useful for testing purposes, where manual timestamps are used.
+    pub fn ts_provider(&self) -> Arc<T> {
+        Arc::clone(&self.ts_provider)
     }
 
     /// Current timestamp.
@@ -114,12 +193,13 @@ impl HlcGenerator {
     pub fn next_timestamp(&self) -> Option<HlcTimestamp> {
         let mut inner = self.inner.write();
 
-        let timestamp = current_timestamp()?;
+        let timestamp = self.ts_provider.current_timestamp()?;
         if inner.state.pt >= timestamp {
             // Known timestamp is not outdated, increment the logical count.
             inner.state.lc += 1;
         } else {
             // Known timestamp is outdated, update timestamp and reset the logical count.
+            inner.state.pt = timestamp;
             inner.state.lc = 0;
         }
         Some(inner.state.clone())
@@ -132,13 +212,16 @@ impl HlcGenerator {
     /// then such a check is ignored).
     ///
     /// Updated timestamp is returned.
-    pub fn update(&self, incoming_id: HlcTimestamp) -> HlcResult<HlcTimestamp> {
+    pub fn update(&self, incoming_state: &HlcTimestamp) -> HlcResult<HlcTimestamp> {
         let mut inner = self.inner.write();
 
-        let timestamp = current_timestamp().ok_or(HlcError::OutOfRangeTimestamp)?;
+        let timestamp = self
+            .ts_provider
+            .current_timestamp()
+            .ok_or(HlcError::OutOfRangeTimestamp)?;
 
         // Physical clock is ahead of both the incoming timestamp and the current state.
-        if timestamp > incoming_id.pt && timestamp > inner.state.pt {
+        if timestamp > incoming_state.pt && timestamp > inner.state.pt {
             // Update the clock state.
             inner.state = HlcTimestamp {
                 pt: timestamp,
@@ -147,33 +230,36 @@ impl HlcGenerator {
             return Ok(inner.state.clone());
         }
 
-        if incoming_id.pt > inner.state.pt {
-            // Check for drift.
-            let drift = (incoming_id.pt - timestamp) as usize;
-            if inner.max_drift > 0 && drift > inner.max_drift {
-                return Err(HlcError::DriftTooLarge(drift, inner.max_drift));
-            } else {
-                // Remote timestamp is ahead of the current state. Update local state.
-                inner.state.pt = incoming_id.pt;
-                inner.state.lc = incoming_id.lc + 1;
+        match incoming_state.pt.cmp(&inner.state.pt) {
+            // Incoming timestamp is ahead of the current state.
+            Ordering::Greater => {
+                // Check for drift.
+                let drift = (incoming_state.pt - timestamp) as usize;
+                if inner.max_drift > 0 && drift > inner.max_drift {
+                    return Err(HlcError::DriftTooLarge(drift, inner.max_drift));
+                } else {
+                    // Remote timestamp is ahead of the current state. Update local state.
+                    inner.state.pt = incoming_state.pt;
+                    inner.state.lc = incoming_state.lc + 1;
+                }
             }
-        } else if incoming_id.pt < inner.state.pt {
-            // Our timestamp is ahead of the incoming timestamp, so it remains unchanged.
-            // We only need to update the logical count.
-            inner.state.lc += 1;
-        } else {
+            // Incoming timestamp is behind the current state.
+            Ordering::Less => {
+                // Our timestamp is ahead of the incoming timestamp, so it remains unchanged.
+                // We only need to update the logical count.
+                inner.state.lc += 1;
+            }
             // Timestamps are equal, so we need to use the maximum logical count for update.
-            if incoming_id.lc > inner.state.lc {
-                inner.state.lc = incoming_id.lc;
+            Ordering::Equal => {
+                // Timestamps are equal, so we need to use the maximum logical count for update.
+                if incoming_state.lc > inner.state.lc {
+                    inner.state.lc = incoming_state.lc;
+                }
+                inner.state.lc += 1;
             }
-            inner.state.lc += 1;
         };
+
 
         Ok(inner.state.clone())
     }
-}
-
-fn current_timestamp() -> Option<i64> {
-    // Get the current time in nanoseconds since the Unix epoch.
-    Utc::now().timestamp_nanos_opt()
 }
