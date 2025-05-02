@@ -3,7 +3,10 @@ use {
         epoch::CustomEpochTimestamp,
         error::{HlcError, HlcResult},
     },
-    std::sync::atomic::{AtomicU64, Ordering},
+    std::{
+        ops::{Add, AddAssign, Sub, SubAssign},
+        sync::atomic::{AtomicU64, Ordering},
+    },
 };
 
 /// Number of bits to represent physical time in milliseconds since custom
@@ -47,7 +50,6 @@ static LC_MAX: u64 = (1 << LC_BITS) - 1;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HlcTimestamp(u64);
 
-
 impl TryFrom<u64> for HlcTimestamp {
     type Error = HlcError;
 
@@ -55,6 +57,48 @@ impl TryFrom<u64> for HlcTimestamp {
         let pt = (value >> LC_BITS) & PT_MAX;
         let lc = value & LC_MAX;
         Self::from_parts(CustomEpochTimestamp::to_unix_timestamp(pt), lc)
+    }
+}
+
+impl Sub for HlcTimestamp {
+    type Output = i64;
+
+    fn sub(self, other: Self) -> Self::Output {
+        let pt1 = ((self.0 >> LC_BITS) & PT_MAX) as i64;
+        let pt2 = ((other.0 >> LC_BITS) & PT_MAX) as i64;
+        pt1 - pt2
+    }
+}
+
+impl Sub<u64> for HlcTimestamp {
+    type Output = Self;
+
+    fn sub(self, ts: u64) -> Self::Output {
+        let (pt, lc) = self.split();
+        HlcTimestamp((pt.wrapping_sub(ts) << LC_BITS) | lc)
+    }
+}
+
+impl SubAssign<u64> for HlcTimestamp {
+    fn sub_assign(&mut self, ts: u64) {
+        let (pt, lc) = self.split();
+        self.0 = (pt.wrapping_sub(ts) << LC_BITS) | lc;
+    }
+}
+
+impl Add<u64> for HlcTimestamp {
+    type Output = Self;
+
+    fn add(self, ts: u64) -> Self::Output {
+        let (pt, lc) = self.split();
+        HlcTimestamp((pt.wrapping_add(ts) << LC_BITS) | lc)
+    }
+}
+
+impl AddAssign<u64> for HlcTimestamp {
+    fn add_assign(&mut self, ts: u64) {
+        let (pt, lc) = self.split();
+        self.0 = (pt.wrapping_add(ts) << LC_BITS) | lc;
     }
 }
 
@@ -99,6 +143,13 @@ impl HlcTimestamp {
     /// Returns the raw `u64` value of the HLC ID.
     pub fn as_u64(&self) -> u64 {
         self.0
+    }
+
+    /// Returns *raw* physical time and logical clock count parts.
+    fn split(&self) -> (u64, u64) {
+        let pt = (self.0 >> LC_BITS) & PT_MAX;
+        let lc = self.0 & LC_MAX;
+        (pt, lc)
     }
 }
 
@@ -160,7 +211,7 @@ impl HlcAtomicTimestamp {
 
 #[cfg(test)]
 mod tests {
-    use {super::*, crate::epoch::EPOCH, std::sync::Arc};
+    use {super::*, crate::epoch::EPOCH, chrono::Utc, std::sync::Arc};
 
     #[test]
     fn concurrent_updates_to_atomic_timestamp() {
@@ -191,5 +242,31 @@ mod tests {
         // One of the threads made the last update, so possible values are in range
         // [EPOCH, EPOCH + 1000]
         assert!((final_timestamp + 1) % 100 == 0);
+    }
+
+    #[test]
+    fn arithmetics() {
+        let start = Utc::now().timestamp_millis();
+        let t1 = HlcTimestamp::from_parts(start, 123).unwrap();
+
+        let t2 = t1 + 1000;
+        assert_eq!(t2.timestamp(), start + 1000);
+        assert_eq!(t2.count(), 123);
+
+        let mut t3 = t2 - 1000;
+        assert_eq!(t3, t1);
+        assert_eq!(t3.timestamp(), start);
+        assert_eq!(t3.count(), 123);
+
+        t3 += 1000;
+        assert_eq!(t3.timestamp(), start + 1000);
+        assert_eq!(t3.count(), 123);
+
+        t3 -= 1000;
+        assert_eq!(t3, t1);
+        assert_eq!(t3.timestamp(), start);
+
+        assert_eq!(t2 - t1, 1000);
+        assert_eq!(t1 - t2, -1000);
     }
 }

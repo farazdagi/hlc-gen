@@ -65,24 +65,66 @@ The generated [`HlcTimestamp`](https://docs.rs/hlc-gen/latest/hlc_gen/struct.Hlc
 thin wrapper over `u64` and conceptually is split into two parts: wall-clock time and logical clock.
 
 ``` verbatim, ignore
-  0                                   42                        64
-  +------------------------------------+-------------------------+
-  | Wall-clock time (in ms)            | Logical clock (counter) |
-  +------------------------------------+-------------------------+
+ 0                                   42                        64
+ +------------------------------------+-------------------------+
+ | Wall-clock time (in ms)            | Logical clock (counter) |
+ +------------------------------------+-------------------------+
 ```
 
 The logical clock is used to resolve the "happened before" relationship between events that occur at
 the same millisecond, i.e. when granularity of the wall-clock time is not small enough to
 distinguish between events.
 
+### Lock-free Implementation
+
 Internally, `AtomicU64` is used to store and update the state of the timestamp, where the first 42
 bits are used for the wall-clock and the last 22 bits are used for the logical clock. The end-user
 is not required to worry about the details of the implementation, as the API exposes only snapshots
 of the state of the generator (via `HlcTimestamp`).
 
+### Granularity and Number of Timestamps
+
 The wall-clock time is stored as milliseconds from custom epoch (starts at 2024-01-01), and is
 monotonically increasing, thus the 42 bits are enough to cover around 139 years of time. The logical
 clock uses the remaining 22 bits, and it is enough to cover around 4M of items per millisecond.
+
+### Arithmetic Operations
+
+`HlcTimestamp` implements the `Add`, `Sub`, `AddAssign`, `SubAssign` traits, so you can update the
+internal timestamp without creating a new instance.
+
+``` rust
+use hlc_gen::{HlcTimestamp};
+
+let start = chrono::Utc::now().timestamp_millis();
+let t1 = HlcTimestamp::from_parts(start, 123).unwrap();
+
+// Add 1000ms to the timestamp, creating a new instance
+let t2 = t1 + 1000;
+assert_eq!(t2.timestamp(), start + 1000);
+assert_eq!(t2.count(), 123);
+
+// Subtract 1000ms from the timestamp, creating a new instance
+let mut t3 = t2 - 1000;
+assert_eq!(t3, t1);
+assert_eq!(t3.timestamp(), start);
+assert_eq!(t3.count(), 123);
+
+// Add 1000ms to the timestamp
+t3 += 1000;
+assert_eq!(t3.timestamp(), start + 1000);
+assert_eq!(t3.count(), 123);
+
+// Subtract 1000ms from the timestamp
+t3 -= 1000;
+assert_eq!(t3, t1);
+assert_eq!(t3.timestamp(), start);
+
+// Find the difference between two timestamps (in ms)
+assert_eq!(t2 - t1, 1000);
+assert_eq!(t1 - t2, -1000);
+assert_eq!(t3 - t3, 0);
+```
 
 ## Sample Use Case
 

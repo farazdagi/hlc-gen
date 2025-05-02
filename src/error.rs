@@ -1,5 +1,5 @@
 /// HLC error type.
-#[derive(Debug, PartialEq, thiserror::Error)]
+#[derive(Debug, PartialEq, Eq, thiserror::Error)]
 pub enum HlcError {
     /// Timestamp is out of range.
     #[error("Out of range timestamp")]
@@ -19,7 +19,7 @@ pub enum HlcError {
 
     /// Timestamp is below the minimum value.
     #[error("Timestamp is below the minimum value: {0} < {1}")]
-    TimestampBelowMin(i64,i64),
+    TimestampBelowMin(i64, i64),
 }
 
 /// HLC result type.
