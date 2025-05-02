@@ -11,7 +11,7 @@ paper.
 
 ## Features
 
-- [ ] Lock-free implementation of the HLC algorithm.
+- [x] Lock-free implementation of the HLC algorithm.
 - [x] High throughput, easy to use with minimal API (timestamp generation for local and send
   events + generator adjusting on receive events).
 
@@ -22,7 +22,8 @@ The idea is to have a generator producing timestamp-based IDs that are:
 - unique and monotonic
 - based on timestamp, thus allowing the correct ordering of events ("happened before" relationship
   preserved)
-- operate on a sub-millisecond level (produced timestamps are in nanoseconds)
+- have a small size (64 bits)
+- operate on a millisecond granularity
 - are generated in a lock-free manner
 
 ## Usage
@@ -30,23 +31,39 @@ The idea is to have a generator producing timestamp-based IDs that are:
 ``` rust
 use hlc_gen::{HlcGenerator, HlcTimestamp};
 
-// Create a new HLC generator.
+// Create a new HLC timestamp generator.
 let g = HlcGenerator::default();
 
-// Generate a new HLC timestamp for local or send event.
-let ts: HlcTimestamp = g.next_timestamp()
-                        .expect("Failed to generate timestamp");
+// Generate a timestamp to either mark some local event
+// or to send it to another node.
+let ts1: HlcTimestamp = g.next_timestamp()
+                         .expect("Failed to generate timestamp");
 
 // When message comes from another node, we can update
 // the generator to preserve the causality relationship.
-let another_ts = HlcTimestamp::from_parts(1234567890, 1234567890);
-g.update(&ts)
+let ts2 = HlcTimestamp::from_parts(1_704_067_200_042, 12345)
+                       .expect("Failed to create timestamp");
+
+g.update(&ts2)
  .expect("Incoming message has timestamp that is drifted too far");
 
 // Newly generated timestamp will "happen after" both
 // the previous local and incoming remote timestamps.
-let ts: Option<HlcTimestamp> = g.next_timestamp();
+let ts3: HlcTimestamp = g.next_timestamp().unwrap();
+assert!(ts3 > ts1);
+assert!(ts3 > ts2);
 
+// To send the timestamp to another node or store locally,
+// convert to `u64`:
+ts3.as_u64();
+
+// To convert back to `HlcTimestamp`, use `from_u64`:
+let ts4 = HlcTimestamp::from_u64(ts3.as_u64())
+    .expect("Failed to create timestamp from u64");
+
+// To obtain the wall-clock time in milliseconds (Unix timestamp),
+// and the logical clock count, use:
+let (ts, cnt) = ts4.parts();
 ```
 
 ## Implementation Details
@@ -54,25 +71,24 @@ let ts: Option<HlcTimestamp> = g.next_timestamp();
 The generated HLC timestamp has two components (see
 [`HlcTimestamp`](https://docs.rs/hlc-gen/latest/hlc_gen/struct.HlcTimestamp.html)):
 
-``` rust
-#[derive(Hash, Clone, PartialEq, Eq, PartialOrd, Ord, Debug)]
-pub struct HlcTimestamp {
-    /// Wall-clock time.
-    ///
-    /// Timestamp in nanoseconds since the Unix epoch.
-    pt: i64,
-
-    /// The logical clock value.
-    ///
-    /// Captures causality for events that occur at the same wall-clock time.
-    lc: u64,
-}
+``` bash, ignore
+    0                          42                          64
+    +---------------------------+---------------------------+
+    | Wall-clock time (in ms)   | Logical clock (counter)   |
+    +---------------------------+---------------------------+
 ```
 
 Basically, you have two counters, one for the wall-clock time and another for the logical clock. The
 logical clock is used to resolve the "happened before" relationship between events that occur at the
-same nanosecond, that is when granularity of the wall-clock time is not small enough to distinguish
+same millisecond, i.e. when granularity of the wall-clock time is not small enough to distinguish
 between events.
+
+Internally, `AtomicU64` is used to store the timestamp, where the first 42 bits are used for the
+wall-clock and the last 22 bits are used for the logical clock.
+
+Since the wall-clock time is stored as milliseconds from custom epoch (starts at 2024-01-01), and is
+monotonically increasing, the 42 bits are enough to cover around 139 years of time. The logical
+clock uses 22 bits, and it is enough to cover around 4M of items per millisecond.
 
 ## Sample Use Case
 
@@ -86,4 +102,5 @@ making sure that it has been added more than 5 minute ago (based on
 [Jim Gray's 5 minute rule](https://dl.acm.org/doi/10.1145/38714.38755) idea ).
 
 ## License
+
 MIT

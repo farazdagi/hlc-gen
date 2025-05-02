@@ -1,15 +1,15 @@
 [package]
 name = "hlc-gen"
-version = "0.2.3"
+version = "1.0.0"
 edition = "2024"
 license = "MIT"
 authors = ["Victor Farazdagi <farazdagi@gmail.com>"]
-description = "Lock-free Hybrid Logical Clock (HLC) generator."
+description = "Lock-free Hybrid Logical Clock (HLC) timestamp generator."
 homepage = "https://github.com/farazdagi/hlc-gen"
 repository = "https://github.com/farazdagi/hlc-gen"
 documentation = "https://docs.rs/hlc-gen"
 readme = "README.md"
-keywords = ["hlc", "lock-free", "clock", "timestamp"]
+keywords = ["hlc", "lock-free", "clock", "timestamp", "lamport-clock"]
 categories = ["algorithms", "data-structures"]
 
 [dependencies]
