@@ -3,7 +3,7 @@ use crate::error::{HlcError, HlcResult};
 /// Pre-calculated custom epoch.
 ///
 /// 2024-01-01 00:00:00 UTC in milliseconds since Unix epoch
-pub(crate) const CUSTOM_EPOCH: i64 = 1_704_067_200_000;
+pub const EPOCH: i64 = 1_704_067_200_000;
 
 /// Timestamps in milliseconds since a custom epoch (2024-01-01 00:00:00 UTC).
 #[derive(Debug)]
@@ -24,16 +24,16 @@ impl CustomEpochTimestamp {
     /// Creates a new `CustomEpochTimestamp` from the given Unix timestamp in
     /// milliseconds.
     pub fn from_unix_timestamp(unix_timestamp: i64) -> HlcResult<Self> {
-        if unix_timestamp < CUSTOM_EPOCH {
-            return Err(HlcError::TimestampBelowMin(unix_timestamp, CUSTOM_EPOCH));
+        if unix_timestamp < EPOCH {
+            return Err(HlcError::TimestampBelowMin(unix_timestamp, EPOCH));
         }
-        Ok(Self::from_millis((unix_timestamp - CUSTOM_EPOCH) as u64))
+        Ok(Self::from_millis((unix_timestamp - EPOCH) as u64))
     }
 
     /// Returns the timestamp in milliseconds since the Unix epoch for a given
     /// number of milliseconds since the custom epoch.
     pub fn to_unix_timestamp(ms: u64) -> i64 {
-        ms as i64 + CUSTOM_EPOCH
+        ms as i64 + EPOCH
     }
 }
 
@@ -53,7 +53,7 @@ mod tests {
             .timestamp_millis();
 
         // Assert that the pre-calculated epoch matches the expected value
-        assert_eq!(CUSTOM_EPOCH, expected_epoch);
+        assert_eq!(EPOCH, expected_epoch);
     }
 
     #[test]

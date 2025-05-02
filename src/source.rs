@@ -1,4 +1,4 @@
-use {crate::epoch::CUSTOM_EPOCH, chrono::Utc, parking_lot::RwLock};
+use {crate::epoch::EPOCH, chrono::Utc, parking_lot::RwLock};
 
 /// Provides current time.
 pub trait ClockSource: Default {
@@ -28,7 +28,7 @@ pub struct ManualClock {
 
 impl Default for ManualClock {
     fn default() -> Self {
-        Self::new(CUSTOM_EPOCH)
+        Self::new(EPOCH)
     }
 }
 

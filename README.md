@@ -53,23 +53,16 @@ let ts3: HlcTimestamp = g.next_timestamp().unwrap();
 assert!(ts3 > ts1);
 assert!(ts3 > ts2);
 
-// To send the timestamp to another node or store locally,
-// convert to `u64`:
-ts3.as_u64();
-
-// To convert back to `HlcTimestamp`, use `from_u64`:
-let ts4 = HlcTimestamp::from_u64(ts3.as_u64())
-    .expect("Failed to create timestamp from u64");
-
 // To obtain the wall-clock time in milliseconds (Unix timestamp),
 // and the logical clock count, use:
-let (ts, cnt) = ts4.parts();
+let (ts, cnt) = ts3.parts();
+let (ts, cnt) = (ts3.timestamp(), ts3.count());
 ```
 
 ## Implementation Details
 
-The generated HLC timestamp has two components (see
-[`HlcTimestamp`](https://docs.rs/hlc-gen/latest/hlc_gen/struct.HlcTimestamp.html)):
+The generated [`HlcTimestamp`](https://docs.rs/hlc-gen/latest/hlc_gen/struct.HlcTimestamp.html) is a
+thin wrapper over `u64` and conceptually is split into two parts: wall-clock time and logical clock.
 
 ``` verbatim, ignore
   0                                   42                        64
@@ -78,17 +71,18 @@ The generated HLC timestamp has two components (see
   +------------------------------------+-------------------------+
 ```
 
-Basically, you have two counters, one for the wall-clock time and another for the logical clock. The
-logical clock is used to resolve the "happened before" relationship between events that occur at the
-same millisecond, i.e. when granularity of the wall-clock time is not small enough to distinguish
-between events.
+The logical clock is used to resolve the "happened before" relationship between events that occur at
+the same millisecond, i.e. when granularity of the wall-clock time is not small enough to
+distinguish between events.
 
-Internally, `AtomicU64` is used to store the timestamp, where the first 42 bits are used for the
-wall-clock and the last 22 bits are used for the logical clock.
+Internally, `AtomicU64` is used to store and update the state of the timestamp, where the first 42
+bits are used for the wall-clock and the last 22 bits are used for the logical clock. The end-user
+is not required to worry about the details of the implementation, as the API exposes only snapshots
+of the state of the generator (via `HlcTimestamp`).
 
-Since the wall-clock time is stored as milliseconds from custom epoch (starts at 2024-01-01), and is
-monotonically increasing, the 42 bits are enough to cover around 139 years of time. The logical
-clock uses 22 bits, and it is enough to cover around 4M of items per millisecond.
+The wall-clock time is stored as milliseconds from custom epoch (starts at 2024-01-01), and is
+monotonically increasing, thus the 42 bits are enough to cover around 139 years of time. The logical
+clock uses the remaining 22 bits, and it is enough to cover around 4M of items per millisecond.
 
 ## Sample Use Case
 

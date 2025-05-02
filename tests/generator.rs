@@ -2,7 +2,7 @@ mod common;
 
 use {
     common::EPOCH,
-    hlc_gen::{HlcGenerator, HlcTimestamp },
+    hlc_gen::{HlcGenerator, HlcTimestamp},
     parking_lot::Mutex,
     std::{sync::Arc, time::Duration},
 };
@@ -18,7 +18,7 @@ fn timstamp_ordering() {
     // Simulate a delay
     std::thread::sleep(Duration::from_millis(1));
     let t3 = g.next_timestamp().unwrap();
-    assert_eq!(t3.parts().1, 0);
+    assert_eq!(t3.count(), 0);
     assert!(t2 < t3);
 }
 
@@ -28,11 +28,13 @@ fn manual_current_time() {
 
     g.set_current_timestamp(EPOCH + 42);
     let t1 = g.next_timestamp().unwrap();
-    assert_eq!(t1.parts(), (EPOCH + 42, 0));
+    assert_eq!(t1.timestamp(), EPOCH + 42);
+    assert_eq!(t1.count(), 0);
 
     g.set_current_timestamp(EPOCH + 43);
     let t1 = g.next_timestamp().unwrap();
-    assert_eq!(t1.parts(), (EPOCH + 43, 0));
+    assert_eq!(t1.timestamp(), EPOCH + 43);
+    assert_eq!(t1.count(), 0);
 }
 
 #[test]
@@ -43,7 +45,8 @@ fn max_drift() {
     g.set_current_timestamp(EPOCH + 12345);
 
     let t1 = g.next_timestamp().unwrap();
-    assert_eq!(t1.parts(), (EPOCH + 12345, 0));
+    assert_eq!(t1.timestamp(), EPOCH + 12345);
+    assert_eq!(t1.count(), 0);
 
     let t2 = HlcTimestamp::from_parts(EPOCH + 12345 + max_drift, 2).unwrap();
     let t3 = HlcTimestamp::from_parts(EPOCH + 12345 + max_drift + 1, 5).unwrap();
@@ -159,7 +162,7 @@ fn multi_threaded_logical_clock_updated() {
     // Ensure that at least some logical clocks got updated.
     let non_zero_count = timestamps
         .iter()
-        .map(|t| t.parts().1)
+        .map(|t| t.count())
         .filter(|lc| *lc != 0)
         .count();
     assert!(non_zero_count > 0);
