@@ -2,7 +2,7 @@ mod common;
 
 use {
     common::EPOCH,
-    hlc_gen::{HlcGenerator, HlcTimestamp, source::ManualClock},
+    hlc_gen::{HlcGenerator, HlcTimestamp },
     parking_lot::Mutex,
     std::{sync::Arc, time::Duration},
 };
@@ -24,13 +24,13 @@ fn timstamp_ordering() {
 
 #[test]
 fn manual_current_time() {
-    let g = HlcGenerator::<ManualClock>::new();
+    let g = HlcGenerator::manual(0);
 
-    g.ts_provider().set_current_timestamp(EPOCH + 42);
+    g.set_current_timestamp(EPOCH + 42);
     let t1 = g.next_timestamp().unwrap();
     assert_eq!(t1.parts(), (EPOCH + 42, 0));
 
-    g.ts_provider().set_current_timestamp(EPOCH + 43);
+    g.set_current_timestamp(EPOCH + 43);
     let t1 = g.next_timestamp().unwrap();
     assert_eq!(t1.parts(), (EPOCH + 43, 0));
 }
@@ -39,8 +39,8 @@ fn manual_current_time() {
 fn max_drift() {
     let max_drift = 1000;
 
-    let g = HlcGenerator::<ManualClock>::with_max_drift(max_drift as usize);
-    g.ts_provider().set_current_timestamp(EPOCH + 12345);
+    let g = HlcGenerator::manual(max_drift as usize);
+    g.set_current_timestamp(EPOCH + 12345);
 
     let t1 = g.next_timestamp().unwrap();
     assert_eq!(t1.parts(), (EPOCH + 12345, 0));
@@ -62,8 +62,8 @@ fn max_drift() {
     );
 
     // With max_drift set to 0, the drift check is ignored.
-    let g = HlcGenerator::<ManualClock>::with_max_drift(0);
-    g.ts_provider().set_current_timestamp(EPOCH + 12345);
+    let g = HlcGenerator::manual(0);
+    g.set_current_timestamp(EPOCH + 12345);
     assert_eq!(
         g.update(&t3),
         Ok(HlcTimestamp::from_parts(EPOCH + 12345 + max_drift + 1, 6).unwrap())
@@ -102,12 +102,12 @@ fn multi_step() {
         Send(11, (11, 1)),
     ];
 
-    let g = HlcGenerator::<ManualClock>::with_max_drift(max_drift as usize);
+    let g = HlcGenerator::manual(max_drift as usize);
     for test in tests {
         match test {
             Send(ts, expected) => {
                 let expected = HlcTimestamp::from_parts(EPOCH + expected.0, expected.1).unwrap();
-                g.ts_provider().set_current_timestamp(EPOCH + ts);
+                g.set_current_timestamp(EPOCH + ts);
                 let t1 = g.next_timestamp().unwrap();
                 assert_eq!(t1, expected);
             }
@@ -116,7 +116,7 @@ fn multi_step() {
                 let incoming_timestamp =
                     HlcTimestamp::from_parts(EPOCH + incoming_timestamp.0, incoming_timestamp.1)
                         .unwrap();
-                g.ts_provider().set_current_timestamp(EPOCH + ts);
+                g.set_current_timestamp(EPOCH + ts);
                 let t1 = g.timestamp();
                 let res = g.update(&incoming_timestamp);
                 if let Ok(t2) = res {

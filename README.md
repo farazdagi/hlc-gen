@@ -31,8 +31,8 @@ The idea is to have a generator producing timestamp-based IDs that are:
 ``` rust
 use hlc_gen::{HlcGenerator, HlcTimestamp};
 
-// Create a new HLC timestamp generator.
-let g = HlcGenerator::default();
+// HLC timestamp generator (with 1000ms of allowable drift).
+let g = HlcGenerator::new(1000);
 
 // Generate a timestamp to either mark some local event
 // or to send it to another node.
