@@ -44,8 +44,7 @@ static LC_MAX: u64 = (1 << LC_BITS) - 1;
 /// happens-before relationship.
 ///
 /// To get the physical time and logical clock count, use the
-/// [`timestamp()`](Self::timestamp()) and [`count()`](Self::count()) methods
-/// respectively.
+/// [`parts()`](Self::parts()) which returns a tuple of `(pt, lc)`.
 #[derive(Debug)]
 pub struct HlcTimestamp(AtomicU64);
 
