@@ -2,10 +2,11 @@ mod common;
 
 use {
     common::EPOCH,
-    hlc_gen::{CurrentTimestamp, HlcGenerator, HlcTimestamp, ManualTimestamp},
+    hlc_gen::{HlcGenerator, HlcTimestamp},
     parking_lot::Mutex,
     std::{sync::Arc, time::Duration},
 };
+use hlc_gen::source::ManualTimestamp;
 
 #[test]
 fn timstamp_ordering() {
