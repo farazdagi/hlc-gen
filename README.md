@@ -71,11 +71,11 @@ let (ts, cnt) = ts4.parts();
 The generated HLC timestamp has two components (see
 [`HlcTimestamp`](https://docs.rs/hlc-gen/latest/hlc_gen/struct.HlcTimestamp.html)):
 
-``` bash, ignore
-0                                       42                        64
-+----------------------------------------+-------------------------+
-| Wall-clock time (in ms)                | Logical clock (counter) |
-+----------------------------------------+-------------------------+
+``` verbatim, ignore
+  0                                       42                        64
+  +----------------------------------------+-------------------------+
+  | Wall-clock time (in ms)                | Logical clock (counter) |
+  +----------------------------------------+-------------------------+
 ```
 
 Basically, you have two counters, one for the wall-clock time and another for the logical clock. The

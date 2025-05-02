@@ -15,7 +15,7 @@ fn create_timestamp() {
     let d = 5i64;
     std::thread::sleep(Duration::from_millis(d as u64));
 
-    let timestamp = HlcTimestamp::new();
+    let timestamp = HlcTimestamp::new(Utc::now().timestamp_millis());
 
     // Ensure the timestamp is within the expected range.
     assert!(timestamp.parts().0 - unix_timestamp >= d);
@@ -40,7 +40,8 @@ fn from_and_to_u64() {
 
 #[test]
 fn concurrent_updates() {
-    let timestamp = Arc::new(HlcTimestamp::new());
+    let timestamp = Arc::new(HlcTimestamp::default());
+
 
     // Create multiple threads to update the timestamp concurrently.
     let mut handles = vec![];

@@ -6,9 +6,9 @@ pub mod source;
 mod timestamp;
 
 pub use timestamp::HlcTimestamp;
+pub use timestamp::HlcId;
 use {
     crate::{
-        epoch::CUSTOM_EPOCH,
         error::{HlcError, HlcResult},
         source::{ClockSource, ManualClock, UtcClock},
     },
@@ -65,9 +65,7 @@ impl<S: ClockSource> HlcGenerator<S> {
     /// Creates a new HLC clock with the specified maximum drift.
     fn with_max_drift(max_drift: usize) -> Self {
         let clock = S::default();
-        let state = HlcTimestamp::from_parts(clock.current_timestamp(), 0).unwrap_or_else(|_| {
-            HlcTimestamp::from_parts(CUSTOM_EPOCH, 0).expect("Invalid timestamp")
-        });
+        let state = HlcTimestamp::from_parts(clock.current_timestamp(), 0).unwrap_or_default();
         Self {
             state,
             max_drift,

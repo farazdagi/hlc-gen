@@ -3,7 +3,6 @@ use {
         epoch::{CUSTOM_EPOCH, CustomEpochTimestamp},
         error::{HlcError, HlcResult},
     },
-    chrono::Utc,
     std::sync::atomic::{AtomicU64, Ordering},
 };
 
@@ -39,18 +38,23 @@ static LC_MAX: u64 = (1 << LC_BITS) - 1;
 /// When you need to update the timestamp, use the [`update()`](Self::update())
 /// method.
 ///
+/// To get the physical time and logical clock count, use the
+/// [`parts()`](Self::parts()) which returns a tuple of `(pt, lc)`.
+///
+/// Alternatively, convert the timestamp to a [`HlcId`](HlcId) using the
+/// [`into_id()`](Self::into_id()) (whenever read-only access is needed) and use
+/// the [`timestamp()`](HlcId::timestamp()) and [`count()`](HlcId::count())
+/// methods to get the physical time and logical clock count.
+///
 /// Finally, you can use the [`as_u64()`](Self::as_u64()) method to get the raw
 /// data, which is guaranteed to be monotonically increasing and capturing the
 /// happens-before relationship.
-///
-/// To get the physical time and logical clock count, use the
-/// [`parts()`](Self::parts()) which returns a tuple of `(pt, lc)`.
 #[derive(Debug)]
 pub struct HlcTimestamp(AtomicU64);
 
 impl Default for HlcTimestamp {
     fn default() -> Self {
-        Self::new()
+        Self(AtomicU64::new(0))
     }
 }
 
@@ -97,9 +101,8 @@ impl Ord for HlcTimestamp {
 }
 
 impl HlcTimestamp {
-    /// Creates a new HLC timestamp.
-    pub fn new() -> Self {
-        let unix_timestamp = Utc::now().timestamp_millis();
+    /// Creates a new HLC timestamp from incoming physical time.
+    pub fn new(unix_timestamp: i64) -> Self {
         let epoch_timestamp = (unix_timestamp - CUSTOM_EPOCH) as u64;
         Self(AtomicU64::new(epoch_timestamp << LC_BITS))
     }
@@ -173,6 +176,16 @@ impl HlcTimestamp {
         value.try_into()
     }
 
+    /// Creates a new HLC ID from the current timestamp.
+    pub fn into_id(self) -> HlcId {
+        HlcId(self.as_u64())
+    }
+
+    /// Creates a new HLC timestamp from the given HLC ID.
+    pub fn from_id(id: HlcId) -> Self {
+        Self(AtomicU64::new(id.into_inner()))
+    }
+
     /// Returns the current physical timestamp and logical clock count as a
     /// tuple.
     ///
@@ -183,5 +196,28 @@ impl HlcTimestamp {
         let pt = (raw_value >> LC_BITS) & PT_MAX;
         let lc = raw_value & LC_MAX;
         (CustomEpochTimestamp::to_unix_timestamp(pt), lc)
+    }
+}
+
+/// This wrapper around raw `u64` data of HLC timestamp.
+///
+/// Provides convenient methods whenever read-only access is needed.
+#[derive(Debug, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
+pub struct HlcId(u64);
+
+impl HlcId {
+    /// Returns the raw `u64` value of the HLC ID.
+    pub fn into_inner(&self) -> u64 {
+        self.0
+    }
+
+    /// Unix timestamp in milliseconds.
+    pub fn timestamp(&self) -> i64 {
+        CustomEpochTimestamp::to_unix_timestamp((self.0 >> LC_BITS) & PT_MAX)
+    }
+
+    /// Logical clock count.
+    pub fn count(&self) -> u64 {
+        self.0 & LC_MAX
     }
 }
