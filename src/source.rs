@@ -1,44 +1,46 @@
 use {crate::epoch::CUSTOM_EPOCH, chrono::Utc, parking_lot::RwLock};
 
-/// Provides the current timestamp in milliseconds since the Unix epoch.
-pub trait TimestampSource: Default {
-    /// Returns the current timestamp in milliseconds since the Unix epoch.
+/// Provides current time.
+pub trait ClockSource: Default {
+    /// The current timestamp in milliseconds since the Unix epoch.
     fn current_timestamp(&self) -> i64;
 }
 
-/// Implementation of the `CurrentTimestamp` trait using UTC.
+/// UTC clock.
+///
+/// Granularity is in milliseconds.
 #[derive(Default)]
-pub struct UtcTimestamp;
+pub struct UtcClock;
 
-impl TimestampSource for UtcTimestamp {
+impl ClockSource for UtcClock {
     fn current_timestamp(&self) -> i64 {
         Utc::now().timestamp_millis()
     }
 }
 
-/// Implementation of the `CurrentTimestamp` trait using a manual timestamp.
+/// Manual clock.
 ///
 /// Useful for testing purposes.
-pub struct ManualTimestamp {
+pub struct ManualClock {
     /// The current timestamp in milliseconds since the Unix epoch.
     timestamp: RwLock<i64>,
 }
 
-impl Default for ManualTimestamp {
+impl Default for ManualClock {
     fn default() -> Self {
         Self::new(CUSTOM_EPOCH)
     }
 }
 
-impl TimestampSource for ManualTimestamp {
+impl ClockSource for ManualClock {
     fn current_timestamp(&self) -> i64 {
         let r = self.timestamp.read();
         *r
     }
 }
 
-impl ManualTimestamp {
-    /// Creates a new `ManualTimestamp` with the specified timestamp.
+impl ManualClock {
+    /// Creates new clock.
     pub fn new(timestamp: i64) -> Self {
         Self {
             timestamp: RwLock::new(timestamp),

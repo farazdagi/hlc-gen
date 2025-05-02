@@ -2,11 +2,10 @@ mod common;
 
 use {
     common::EPOCH,
-    hlc_gen::{HlcGenerator, HlcTimestamp},
+    hlc_gen::{HlcGenerator, HlcTimestamp, source::ManualClock},
     parking_lot::Mutex,
     std::{sync::Arc, time::Duration},
 };
-use hlc_gen::source::ManualTimestamp;
 
 #[test]
 fn timstamp_ordering() {
@@ -25,7 +24,7 @@ fn timstamp_ordering() {
 
 #[test]
 fn manual_current_time() {
-    let g = HlcGenerator::<ManualTimestamp>::new();
+    let g = HlcGenerator::<ManualClock>::new();
 
     g.ts_provider().set_current_timestamp(EPOCH + 42);
     let t1 = g.next_timestamp().unwrap();
@@ -40,7 +39,7 @@ fn manual_current_time() {
 fn max_drift() {
     let max_drift = 1000;
 
-    let g = HlcGenerator::<ManualTimestamp>::with_max_drift(max_drift as usize);
+    let g = HlcGenerator::<ManualClock>::with_max_drift(max_drift as usize);
     g.ts_provider().set_current_timestamp(EPOCH + 12345);
 
     let t1 = g.next_timestamp().unwrap();
@@ -63,7 +62,7 @@ fn max_drift() {
     );
 
     // With max_drift set to 0, the drift check is ignored.
-    let g = HlcGenerator::<ManualTimestamp>::with_max_drift(0);
+    let g = HlcGenerator::<ManualClock>::with_max_drift(0);
     g.ts_provider().set_current_timestamp(EPOCH + 12345);
     assert_eq!(
         g.update(&t3),
@@ -103,7 +102,7 @@ fn multi_step() {
         Send(11, (11, 1)),
     ];
 
-    let g = HlcGenerator::<ManualTimestamp>::with_max_drift(max_drift as usize);
+    let g = HlcGenerator::<ManualClock>::with_max_drift(max_drift as usize);
     for test in tests {
         match test {
             Send(ts, expected) => {
