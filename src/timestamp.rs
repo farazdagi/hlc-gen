@@ -60,15 +60,24 @@ impl TryFrom<u64> for HlcTimestamp {
     }
 }
 
-impl Sub for HlcTimestamp {
-    type Output = i64;
+macro_rules! impl_sub {
+    ($lhs:ty, $rhs:ty) => {
+        impl Sub<$rhs> for $lhs {
+            type Output = i64;
 
-    fn sub(self, other: Self) -> Self::Output {
-        let pt1 = ((self.0 >> LC_BITS) & PT_MAX) as i64;
-        let pt2 = ((other.0 >> LC_BITS) & PT_MAX) as i64;
-        pt1 - pt2
-    }
+            fn sub(self, rhs: $rhs) -> Self::Output {
+                let pt1 = ((self.0 >> LC_BITS) & PT_MAX) as i64;
+                let pt2 = ((rhs.0 >> LC_BITS) & PT_MAX) as i64;
+                pt1 - pt2
+            }
+        }
+    };
 }
+
+impl_sub!(HlcTimestamp, HlcTimestamp);
+impl_sub!(&HlcTimestamp, &HlcTimestamp);
+impl_sub!(HlcTimestamp, &HlcTimestamp);
+impl_sub!(&HlcTimestamp, HlcTimestamp);
 
 impl Sub<u64> for HlcTimestamp {
     type Output = Self;
@@ -266,7 +275,16 @@ mod tests {
         assert_eq!(t3, t1);
         assert_eq!(t3.timestamp(), start);
 
-        assert_eq!(t2 - t1, 1000);
-        assert_eq!(t1 - t2, -1000);
+        assert_eq!(t2 - t1, 1000i64);
+        assert_eq!(t1 - t2, -1000i64);
+
+        assert_eq!(&t2 - &t1, 1000i64);
+        assert_eq!(&t1 - &t2, -1000i64);
+
+        assert_eq!(&t2 - t1, 1000i64);
+        assert_eq!(&t1 - t2, -1000i64);
+
+        assert_eq!(t2 - &t1, 1000i64);
+        assert_eq!(t1 - &t2, -1000i64);
     }
 }
