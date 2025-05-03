@@ -50,6 +50,17 @@ static LC_MAX: u64 = (1 << LC_BITS) - 1;
 #[derive(Debug, Default, Clone, Copy, PartialEq, Eq, PartialOrd, Ord, Hash)]
 pub struct HlcTimestamp(u64);
 
+impl std::fmt::Display for HlcTimestamp {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        // Customize the output format here
+        write!(
+            f,
+            "HlcTimestamp {{ timestamp: {}, count: {} }}",
+            self.timestamp(), self.count()
+        )
+    }
+}
+
 impl TryFrom<u64> for HlcTimestamp {
     type Error = HlcError;
 

@@ -43,7 +43,6 @@ let ts1: HlcTimestamp = g.next_timestamp()
 // the generator to preserve the causality relationship.
 let ts2 = HlcTimestamp::from_parts(1_704_067_200_042, 12345)
                        .expect("Failed to create timestamp");
-
 g.update(&ts2)
  .expect("Incoming message has timestamp that is drifted too far");
 
