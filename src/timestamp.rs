@@ -52,11 +52,11 @@ pub struct HlcTimestamp(u64);
 
 impl std::fmt::Display for HlcTimestamp {
     fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
-        // Customize the output format here
         write!(
             f,
             "HlcTimestamp {{ timestamp: {}, count: {} }}",
-            self.timestamp(), self.count()
+            self.timestamp(),
+            self.count()
         )
     }
 }
@@ -95,7 +95,7 @@ impl Sub<u64> for HlcTimestamp {
 
     fn sub(self, ts: u64) -> Self::Output {
         let (pt, lc) = self.split();
-        HlcTimestamp((pt.wrapping_sub(ts) << LC_BITS) | lc)
+        Self((pt.wrapping_sub(ts) << LC_BITS) | lc)
     }
 }
 
@@ -111,7 +111,7 @@ impl Add<u64> for HlcTimestamp {
 
     fn add(self, ts: u64) -> Self::Output {
         let (pt, lc) = self.split();
-        HlcTimestamp((pt.wrapping_add(ts) << LC_BITS) | lc)
+        Self((pt.wrapping_add(ts) << LC_BITS) | lc)
     }
 }
 
@@ -174,11 +174,11 @@ impl HlcTimestamp {
 }
 
 #[derive(Debug)]
-pub(crate) struct HlcAtomicTimestamp(AtomicU64);
+pub struct HlcAtomicTimestamp(AtomicU64);
 
 impl From<HlcTimestamp> for HlcAtomicTimestamp {
     fn from(ts: HlcTimestamp) -> Self {
-        HlcAtomicTimestamp(AtomicU64::new(ts.0))
+        Self(AtomicU64::new(ts.0))
     }
 }
 
@@ -190,7 +190,7 @@ impl HlcAtomicTimestamp {
     ///
     /// This is an atomic operation that ensures thread safety in a lock-free
     /// fashion. Either both values are updated or none are.
-    pub fn update<F>(&self, new_values: F) -> HlcResult<HlcAtomicTimestamp>
+    pub fn update<F>(&self, new_values: F) -> HlcResult<Self>
     where
         F: Fn(i64, u64) -> HlcResult<(i64, u64)>,
     {
@@ -218,7 +218,7 @@ impl HlcAtomicTimestamp {
                 .compare_exchange(current, new_combined, Ordering::AcqRel, Ordering::Acquire)
                 .is_ok()
             {
-                return Ok(HlcAtomicTimestamp(AtomicU64::new(new_combined)));
+                return Ok(Self(AtomicU64::new(new_combined)));
             }
         }
     }
