@@ -1,6 +1,6 @@
 [package]
 name = "hlc-gen"
-version = "1.2.1"
+version = "1.2.3"
 edition = "2024"
 license = "MIT"
 authors = ["Victor Farazdagi <farazdagi@gmail.com>"]
