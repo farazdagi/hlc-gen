@@ -1,11 +1,6 @@
 mod common;
 
-use {
-    chrono::Utc,
-    common::EPOCH,
-    hlc_gen::HlcTimestamp,
-    std::{ time::Duration},
-};
+use {chrono::Utc, common::EPOCH, hlc_gen::HlcTimestamp, std::time::Duration};
 
 #[test]
 fn create_timestamp() {
